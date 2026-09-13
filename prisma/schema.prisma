@@ -10,10 +10,14 @@ datasource db {
 enum MonitorStatus {
   UP
   DOWN
+
+  @@map("monitor_status")
 }
 
 enum HttpMethod {
   GET
+
+  @@map("http_method")
 }
 
 // Profile applicatif lié à l'utilisateur Supabase Auth.
@@ -21,24 +25,27 @@ enum HttpMethod {
 model User {
   id        String    @id @db.Uuid
   email     String    @unique
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
 
   services Service[]
+
+  @@map("users")
 }
 
 model Service {
   id          String    @id @default(uuid()) @db.Uuid
   name        String
   description String?
-  userId      String    @db.Uuid
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  userId      String    @db.Uuid @map("user_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   monitors Monitor[]
 
   @@index([userId])
+  @@map("services")
 }
 
 model Monitor {
@@ -48,29 +55,31 @@ model Monitor {
   method         HttpMethod    @default(GET)
   interval       Int           @default(60)
   timeout        Int           @default(10000)
-  expectedStatus Int           @default(200)
-  isActive       Boolean       @default(true)
-  serviceId      String        @db.Uuid
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  expectedStatus Int           @default(200) @map("expected_status")
+  isActive       Boolean       @default(true) @map("is_active")
+  serviceId      String        @db.Uuid @map("service_id")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
 
   service      Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   checkResults CheckResult[]
 
   @@index([serviceId])
   @@index([isActive])
+  @@map("monitors")
 }
 
 model CheckResult {
   id           String        @id @default(uuid()) @db.Uuid
-  monitorId    String        @db.Uuid
+  monitorId    String        @db.Uuid @map("monitor_id")
   status       MonitorStatus
-  statusCode   Int?
-  responseTime Int?
+  statusCode   Int?          @map("status_code")
+  responseTime Int?          @map("response_time")
   error        String?
-  checkedAt    DateTime      @default(now())
+  checkedAt    DateTime      @default(now()) @map("checked_at")
 
   monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
 
   @@index([monitorId, checkedAt])
+  @@map("check_results")
 }
