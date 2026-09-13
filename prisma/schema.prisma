@@ -16,12 +16,14 @@ enum HttpMethod {
   GET
 }
 
+// Profile applicatif lié à l'utilisateur Supabase Auth.
+// L'identifiant correspond directement à auth.users.id.
 model User {
-  id        String    @id @default(uuid()) @db.Uuid
+  id        String    @id @db.Uuid
   email     String    @unique
-  password  String
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+
   services Service[]
 }
 
@@ -32,8 +34,10 @@ model Service {
   userId      String    @db.Uuid
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
-  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  monitors   Monitor[]
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  monitors Monitor[]
+
   @@index([userId])
 }
 
@@ -49,8 +53,10 @@ model Monitor {
   serviceId      String        @db.Uuid
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
-  service        Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
-  checkResults   CheckResult[]
+
+  service      Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  checkResults CheckResult[]
+
   @@index([serviceId])
   @@index([isActive])
 }
@@ -63,6 +69,8 @@ model CheckResult {
   responseTime Int?
   error        String?
   checkedAt    DateTime      @default(now())
-  monitor      Monitor       @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
+  monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+
   @@index([monitorId, checkedAt])
 }
