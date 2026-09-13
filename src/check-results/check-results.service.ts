@@ -41,29 +41,29 @@ export class CheckResultsService {
 
     if (!monitor) return null;
 
-    const results = await this.prisma.checkResult.findMany({
-      where: { monitorId },
-      select: { status: true, responseTime: true },
-    });
-
-    const total = results.length;
-    const successful = results.filter((result) => result.status === 'UP').length;
-    const responseTimes = results
-      .map((result) => result.responseTime)
-      .filter((value): value is number => value !== null);
+    const [totalChecks, successfulChecks, responseStats] = await Promise.all([
+      this.prisma.checkResult.count({ where: { monitorId } }),
+      this.prisma.checkResult.count({
+        where: { monitorId, status: 'UP' },
+      }),
+      this.prisma.checkResult.aggregate({
+        where: { monitorId },
+        _avg: { responseTime: true },
+      }),
+    ]);
 
     return {
-      totalChecks: total,
-      successfulChecks: successful,
-      failedChecks: total - successful,
-      uptimePercentage: total === 0 ? null : Number(((successful / total) * 100).toFixed(2)),
-      averageResponseTime:
-        responseTimes.length === 0
+      totalChecks,
+      successfulChecks,
+      failedChecks: totalChecks - successfulChecks,
+      uptimePercentage:
+        totalChecks === 0
           ? null
-          : Math.round(
-              responseTimes.reduce((sum, value) => sum + value, 0) /
-                responseTimes.length,
-            ),
+          : Number(((successfulChecks / totalChecks) * 100).toFixed(2)),
+      averageResponseTime:
+        responseStats._avg.responseTime === null
+          ? null
+          : Math.round(responseStats._avg.responseTime),
     };
   }
 }
