@@ -1,0 +1,26 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// TODO: Define models here
+// 
+// Planned models:
+// - User: Utilisateurs du système
+// - Service: Groupe logique de monitors (ex: "Frontend", "Backend", "Payment API")
+// - Monitor: Configuration de suivi d'une URL spécifique (ex: "GET /health")
+// - CheckResult: Résultat d'une vérification HTTP (statut, temps de réponse, etc)
+// - Incident: Alerte créée quand un monitor échoue
+
+// Relationships:
+// User → Services (1-N)
+// Service → Monitors (1-N)
+// Monitor → CheckResults (1-N)
+// Monitor → Incidents (1-N)
