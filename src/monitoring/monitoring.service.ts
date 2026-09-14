@@ -6,6 +6,7 @@ import { TargetUrlService } from '@/common/target-url.service';
 @Injectable()
 export class MonitoringService {
   private readonly logger = new Logger(MonitoringService.name);
+  private isCheckCycleRunning = false;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -14,28 +15,41 @@ export class MonitoringService {
 
   @Cron(CronExpression.EVERY_MINUTE, {
     name: 'monitor-active-apis',
-    waitForCompletion: true,
   })
   async runScheduledChecks(): Promise<void> {
-    const monitors = await this.prisma.monitor.findMany({
-      where: { isActive: true },
-      include: {
-        checkResults: {
-          orderBy: { checkedAt: 'desc' },
-          take: 1,
+    if (this.isCheckCycleRunning) {
+      this.logger.warn('Previous monitoring cycle is still running; skipping this cycle.');
+      return;
+    }
+
+    this.isCheckCycleRunning = true;
+
+    try {
+      const monitors = await this.prisma.monitor.findMany({
+        where: { isActive: true },
+        include: {
+          checkResults: {
+            orderBy: { checkedAt: 'desc' },
+            take: 1,
+          },
         },
-      },
-    });
+      });
 
-    const now = Date.now();
-    const dueMonitors = monitors.filter((monitor) => {
-      const lastCheck = monitor.checkResults[0]?.checkedAt;
-      return !lastCheck || now - lastCheck.getTime() >= monitor.interval * 1000;
-    });
+      const now = Date.now();
+      const dueMonitors = monitors.filter((monitor) => {
+        const lastCheck = monitor.checkResults[0]?.checkedAt;
+        return !lastCheck || now - lastCheck.getTime() >= monitor.interval * 1000;
+      });
 
-    if (dueMonitors.length === 0) return;
+      if (dueMonitors.length === 0) return;
 
-    await Promise.all(dueMonitors.map((monitor) => this.checkMonitor(monitor)));
+      await Promise.all(dueMonitors.map((monitor) => this.checkMonitor(monitor)));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Monitoring cycle failed: ${message}`);
+    } finally {
+      this.isCheckCycleRunning = false;
+    }
   }
 
   private async checkMonitor(monitor: {
