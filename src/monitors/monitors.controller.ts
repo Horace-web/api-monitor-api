@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -15,6 +14,7 @@ import { CurrentUser } from '@/auth/current-user.decorator';
 import { SupabaseAuthGuard } from '@/auth/supabase-auth.guard';
 import { SupabaseUser } from '@/auth/supabase-auth.service';
 import { MonitorsService } from './monitors.service';
+import { CreateMonitorDto } from './dto/create-monitor.dto';
 
 @ApiTags('monitors')
 @ApiBearerAuth()
@@ -40,51 +40,13 @@ export class MonitorsController {
 
   @Post()
   async create(
-    @Body()
-    body: {
-      serviceId?: string;
-      name?: string;
-      url?: string;
-      timeout?: number;
-      expectedStatus?: number;
-      interval?: number;
-    },
+    @Body() body: CreateMonitorDto,
     @CurrentUser() user: SupabaseUser,
   ) {
-    if (!body.serviceId || !body.name || !body.url) {
-      throw new BadRequestException('serviceId, name and url are required');
-    }
-
-    let parsedUrl: URL;
-    try {
-      parsedUrl = new URL(body.url);
-    } catch {
-      throw new BadRequestException('url must be a valid URL');
-    }
-
-    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
-      throw new BadRequestException('Only HTTP and HTTPS URLs are supported');
-    }
-
-    if (body.interval !== undefined && body.interval < 60) {
-      throw new BadRequestException('interval must be at least 60 seconds');
-    }
-
-    if (body.timeout !== undefined && body.timeout <= 0) {
-      throw new BadRequestException('timeout must be greater than 0');
-    }
-
-    if (
-      body.expectedStatus !== undefined &&
-      (body.expectedStatus < 100 || body.expectedStatus > 599)
-    ) {
-      throw new BadRequestException('expectedStatus must be between 100 and 599');
-    }
-
     const monitor = await this.monitorsService.create(user, {
       serviceId: body.serviceId,
       name: body.name.trim(),
-      url: parsedUrl.toString(),
+      url: new URL(body.url).toString(),
       timeout: body.timeout,
       expectedStatus: body.expectedStatus,
       interval: body.interval,
