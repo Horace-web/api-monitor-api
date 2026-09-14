@@ -1,199 +1,291 @@
-# API Monitor - Backend API
+# API Monitor — Backend API
 
-A comprehensive API monitoring platform that tracks the health and availability of external APIs and services in real-time.
+Backend NestJS de **API Monitor**, une plateforme de surveillance d'APIs et de services HTTP.
 
-## Project Overview
+Le MVP permet à un utilisateur authentifié de créer des services, d'y associer des monitors HTTP et de conserver l'historique des vérifications afin de suivre la disponibilité et les temps de réponse.
 
-API Monitor is designed to help development teams monitor critical API endpoints, track response times, detect failures, and manage incidents. The system provides a centralized hub for monitoring multiple services and their health checks.
+## Architecture
 
-## 🏗️ Architecture
-
-### Technology Stack
-
-- **Framework**: NestJS
-- **Language**: TypeScript
-- **Database**: PostgreSQL (via Supabase)
-- **ORM**: Prisma
-- **Authentication**: JWT
-
-### Data Hierarchy
-
+```text
+Next.js Web
+    │ HTTPS + Bearer Supabase Access Token
+    ▼
+NestJS API
+    ├── Supabase Auth — authentification
+    ├── Services      — regroupement des monitors
+    ├── Monitors      — configuration des checks
+    ├── Monitoring    — scheduler + requêtes HTTP
+    └── Check Results — historique + statistiques
+             │
+             ▼
+      PostgreSQL / Supabase
 ```
+
+### Stack
+
+- **NestJS 10** — API REST
+- **TypeScript** — langage
+- **Prisma 5** — ORM
+- **PostgreSQL / Supabase** — base de données
+- **Supabase Auth** — authentification des utilisateurs
+- **Swagger / OpenAPI** — documentation et test de l'API
+- **class-validator** — validation des DTO
+- **@nestjs/schedule** — exécution périodique des checks
+
+Supabase Auth fournit les access tokens utilisés par le frontend. Le backend vérifie le token auprès de Supabase avant d'autoriser l'accès aux routes protégées.
+
+## Structure des données
+
+```text
 User
- └── Service (e.g., "Backend", "Frontend", "Payment API")
-      └── Monitor (e.g., "GET /health", "GET /api/status")
-           ├── CheckResults (historical check data)
-           └── Incidents (failure alerts)
+ └── Service
+      └── Monitor
+           └── CheckResult
 ```
 
-### Module Structure
+- **User** : utilisateur authentifié par Supabase.
+- **Service** : groupe logique de monitors.
+- **Monitor** : endpoint HTTP à surveiller.
+- **CheckResult** : résultat historique d'une vérification.
 
-```
+Les incidents et notifications sont prévus pour une évolution ultérieure du projet.
+
+## Modules
+
+```text
 src/
-├── auth/                 # Authentication & JWT token management
-├── users/                # User account management
-├── services/             # Service grouping and management
-├── monitors/             # Monitor configuration CRUD
-├── monitoring/           # Core monitoring engine (scheduler, HTTP checks)
-├── check-results/        # Storage and retrieval of check results
-├── incidents/            # Incident tracking and alerting
-├── prisma/               # Database connection and Prisma service
-├── common/               # Shared utilities, guards, interceptors
-├── app.module.ts         # Root application module
-└── main.ts               # Application entry point
+├── auth/                 # Validation des tokens Supabase
+├── users/                # Gestion du profil applicatif
+├── services/             # Services et ownership utilisateur
+├── monitors/             # Configuration des monitors
+├── monitoring/           # Scheduler et exécution des checks
+├── check-results/        # Historique et statistiques
+├── incidents/            # Base pour les incidents futurs
+├── prisma/               # Prisma Client
+├── common/               # Utilitaires partagés et sécurité URL
+├── app.module.ts
+└── main.ts
 ```
 
-## 📋 Module Responsibilities
+## Fonctionnalités MVP
 
-### `auth`
-- User login and registration
-- JWT token generation and validation
-- Authentication strategies (JWT, local)
+### Services
 
-### `users`
-- User CRUD operations
-- User profile management
-- Password handling and security
+- Lister ses services
+- Consulter un service
+- Créer un service
+- Supprimer un service
+- Isolation des données par utilisateur
 
-### `services`
-- Logical grouping of monitors
-- Service ownership and permissions
-- Service status aggregation
+### Monitors
 
-### `monitors`
-- Monitor configuration management
-- Enable/disable functionality
-- Check frequency settings
+- Méthode **GET** pour le MVP
+- URL HTTP/HTTPS
+- Nom du monitor
+- Intervalle configurable, minimum **60 secondes**
+- Timeout configurable
+- Code HTTP attendu configurable
+- Activation / désactivation
+- Suppression
+- Isolation par propriétaire du service
 
-### `monitoring` ⭐ (Core)
-- **Main Monitoring Engine**
-- Task scheduling for periodic checks
-- HTTP GET request execution
-- Timeout and retry handling
-- CheckResult recording
-- Incident detection and creation
+### Monitoring
 
-**MVP Features**:
-- GET requests only
-- Configurable timeouts (MONITORING_TIMEOUT env var)
-- Retry mechanism (MONITORING_RETRIES env var)
-- HTTP status code validation (2xx = success)
+Le scheduler s'exécute toutes les minutes. Pour chaque monitor actif, il vérifie si son intervalle est arrivé à échéance avant de lancer un nouveau check.
 
-### `check-results`
-- CheckResult storage and retrieval
-- Check history with filtering and pagination
-- Uptime statistics and analytics
-- Historical data cleanup
+Chaque vérification enregistre :
 
-### `incidents`
-- Incident lifecycle management (open/acknowledged/resolved)
-- Failure tracking with consecutive count
-- Alert notifications (future)
-- Escalation policies (future)
+- statut `UP` ou `DOWN`
+- code HTTP reçu
+- temps de réponse en millisecondes
+- éventuelle erreur
+- date et heure du check
 
-### `prisma`
-- Centralized database connection
-- Prisma Client initialization and management
+Un check est considéré comme réussi lorsque le code HTTP reçu correspond au code attendu du monitor.
 
-### `common`
-- Shared exception filters
-- HTTP interceptors
-- Authentication guards
-- DTOs and validation pipes
-- Utility functions
+### Sécurité des URLs
 
-## 🚀 Getting Started
+Les URLs fournies par les utilisateurs sont contrôlées avant leur utilisation afin de limiter les risques de SSRF. Le backend accepte uniquement HTTP/HTTPS et bloque notamment les destinations locales, loopback, privées, link-local et certaines adresses réservées.
 
-### Prerequisites
+Cette protection est une défense applicative ; pour un déploiement à grande échelle, un mécanisme d'egress dédié ou de résolution réseau plus stricte pourra être ajouté.
 
-- Node.js 18+
-- npm or yarn
-- PostgreSQL database (or Supabase account)
+## API
 
-### Installation
+Toutes les routes métier sont protégées par :
+
+```http
+Authorization: Bearer <SUPABASE_ACCESS_TOKEN>
+```
+
+### Health check
+
+```http
+GET /health
+```
+
+Route publique utilisée notamment par l'hébergement pour vérifier que l'API répond.
+
+### Services
+
+```text
+GET    /services
+GET    /services/:id
+POST   /services
+DELETE /services/:id
+```
+
+### Monitors
+
+```text
+GET    /monitors
+GET    /monitors/:id
+GET    /monitors?serviceId=:serviceId
+POST   /monitors
+POST   /monitors/:id/activate
+POST   /monitors/:id/deactivate
+DELETE /monitors/:id
+```
+
+### Check results
+
+```text
+GET /check-results/monitor/:monitorId
+GET /check-results/monitor/:monitorId/stats
+```
+
+Le paramètre `limit` permet de limiter l'historique retourné. Les statistiques comprennent notamment le nombre total de checks, les checks réussis/échoués, le pourcentage d'uptime et le temps de réponse moyen.
+
+## Swagger
+
+En développement, la documentation OpenAPI est disponible sur :
+
+```text
+http://localhost:3001/api
+```
+
+Swagger expose également le schéma **Bearer Authentication**, ce qui permet de tester les routes protégées avec un access token Supabase.
+
+## Installation
+
+### Prérequis
+
+- Node.js 20 recommandé
+- npm
+- Un projet PostgreSQL/Supabase
+- Un projet Supabase Auth configuré
+
+### Installation des dépendances
 
 ```bash
-# Install dependencies
 npm install
-
-# Generate Prisma Client
-npm run prisma:generate
-
-# Set up environment variables
-cp .env.example .env
-# Edit .env with your database credentials and JWT secret
-
-# Run database migrations (when schema is defined)
-npm run prisma:migrate
 ```
 
-### Development
+### Génération de Prisma Client
 
 ```bash
-# Start in watch mode
+npx prisma generate
+```
+
+### Variables d'environnement
+
+Copier `.env.example` vers `.env` puis renseigner les valeurs adaptées à l'environnement.
+
+```env
+NODE_ENV=development
+PORT=3001
+
+DATABASE_URL=postgresql://...
+
+SUPABASE_URL=https://your-project-ref.supabase.co
+SUPABASE_PUBLISHABLE_KEY=your_supabase_publishable_key
+
+FRONTEND_URL=http://localhost:3000
+
+MONITORING_TIMEOUT=10000
+MONITORING_RETRIES=0
+```
+
+**Ne jamais commit une `DATABASE_URL` contenant un mot de passe ni une clé Supabase secrète.** La clé secrète/service role n'est pas nécessaire au fonctionnement normal de cette API et ne doit jamais être exposée au frontend.
+
+### Lancer en développement
+
+```bash
 npm run start:dev
-
-# Run tests
-npm test
-
-# Open Prisma Studio (database GUI)
-npm run prisma:studio
 ```
 
-### Production
+### Build de production
 
 ```bash
-# Build
 npm run build
+```
 
-# Start
+### Démarrer en production
+
+```bash
 npm run start:prod
 ```
 
-## 📝 Environment Variables
+## Base de données
 
-See `.env.example` for required variables:
+Le schéma Prisma se trouve dans `prisma/schema.prisma`.
 
-- `NODE_ENV` - Application environment (development/production)
-- `PORT` - Server port (default: 3000)
-- `DATABASE_URL` - PostgreSQL connection string (from Supabase)
-- `JWT_SECRET` - Secret key for JWT tokens
-- `JWT_EXPIRATION` - Token expiration time
-- `MONITORING_TIMEOUT` - HTTP request timeout in ms
-- `MONITORING_RETRIES` - Number of retries for failed checks
+Le script SQL de création du schéma Supabase se trouve dans :
 
-## 🔄 Data Flow Example
+```text
+supabase/schema.sql
+```
 
-1. **User** creates an account via Auth module
-2. **User** creates a **Service** (e.g., "Backend APIs")
-3. **User** creates **Monitors** under the Service (e.g., "GET https://api.example.com/health")
-4. **Monitoring module** runs on schedule (e.g., every 30 seconds)
-   - Makes HTTP GET request to each monitor URL
-   - Records result in database via CheckResults module
-   - If failed: Incidents module creates/updates an Incident
-5. **User** views dashboard to see:
-   - Monitor status and history
-   - Uptime statistics
-   - Active incidents and alerts
+Les noms Prisma sont mappés vers les tables et colonnes SQL utilisées par Supabase.
 
-## 📚 Next Steps
+Le projet utilise également des politiques RLS côté Supabase pour isoler les données selon l'utilisateur authentifié.
 
-Before implementing features, the following will be defined:
+## CI
 
-1. **Prisma Schema** - User, Service, Monitor, CheckResult, Incident models with relations
-2. **DTO Definitions** - Request/response validation schemas for each module
-3. **API Endpoints** - RESTful routes for CRUD operations
-4. **Authentication Guard** - JWT validation for protected routes
-5. **Monitoring Logic** - Scheduler implementation and HTTP check execution
+GitHub Actions vérifie automatiquement le backend sur les pushes et pull requests vers `main` :
 
-## 📄 License
+1. Installation des dépendances
+2. Génération de Prisma Client
+3. Build NestJS
+
+Workflow : `.github/workflows/ci.yml`
+
+## Déploiement
+
+Le backend est prévu pour être déployé sur **Render** avec PostgreSQL fourni par **Supabase**.
+
+Configuration prévue :
+
+```text
+Runtime       : Node
+Build command : npm install && npm run build
+Start command : npm run start:prod
+Health check  : /health
+Branch        : main
+```
+
+Les variables d'environnement sont configurées directement sur la plateforme de déploiement et ne doivent pas être commitées dans Git.
+
+> **Note monitoring :** un hébergement gratuit qui met le service en veille peut interrompre temporairement le scheduler. Pour une surveillance réellement continue, l'instance de monitoring devra rester active ou le scheduler devra être externalisé.
+
+## Évolutions prévues
+
+Le MVP reste volontairement simple. Les évolutions possibles sont :
+
+- gestion des incidents
+- règle de confirmation après plusieurs échecs consécutifs
+- notifications email
+- graphiques d'uptime et de temps de réponse
+- pagination et rétention des historiques
+- méthodes POST/PUT/PATCH/DELETE pour les checks avancés
+- meilleure gestion des checks à grande échelle
+- séparation éventuelle du scheduler dans un worker dédié
+
+## Licence
 
 MIT
 
-## 👤 Author
+## Auteur
 
 Horace-web
 
----
-
-**Status**: 🚧 Project initialized - Architecture ready for feature development
+**Statut :** 🚧 Backend MVP en cours de finalisation et de déploiement.
