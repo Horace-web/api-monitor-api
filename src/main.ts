@@ -1,9 +1,10 @@
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
 
   app.useGlobalPipes(
@@ -40,8 +41,19 @@ async function bootstrap() {
   const port = process.env.PORT || 3001;
   await app.listen(port);
 
-  console.log(`API Monitor server is running on http://localhost:${port}`);
-  console.log(`Swagger documentation is available on http://localhost:${port}/docs`);
+  const baseUrl = process.env.API_BASE_URL?.replace(/\/$/, '');
+  logger.log(`API Monitor API started successfully on port ${port}`);
+  logger.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  logger.log(
+    baseUrl
+      ? `Swagger documentation: ${baseUrl}/docs`
+      : 'Swagger documentation: /docs',
+  );
 }
 
-bootstrap();
+bootstrap().catch((error: unknown) => {
+  const logger = new Logger('Bootstrap');
+  const message = error instanceof Error ? error.message : String(error);
+  logger.error(`Failed to start API Monitor API: ${message}`);
+  process.exit(1);
+});
