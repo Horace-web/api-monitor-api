@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Controller,
   Delete,
   Get,
@@ -11,9 +10,10 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@/auth/current-user.decorator';
-import { SupabaseAuthGuard, } from '@/auth/supabase-auth.guard';
+import { SupabaseAuthGuard } from '@/auth/supabase-auth.guard';
 import { SupabaseUser } from '@/auth/supabase-auth.service';
 import { ServicesService } from './services.service';
+import { CreateServiceDto } from './dto/create-service.dto';
 
 @ApiTags('services')
 @ApiBearerAuth()
@@ -40,13 +40,9 @@ export class ServicesController {
 
   @Post()
   create(
-    @Body() body: { name?: string; description?: string },
+    @Body() body: CreateServiceDto,
     @CurrentUser() user: SupabaseUser,
   ) {
-    if (!body.name || body.name.trim().length < 2) {
-      throw new BadRequestException('name must contain at least 2 characters');
-    }
-
     return this.servicesService.create(user, {
       name: body.name.trim(),
       description: body.description?.trim(),
