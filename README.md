@@ -160,7 +160,7 @@ Le paramètre `limit` permet de limiter l'historique retourné. Les statistiques
 En développement, la documentation OpenAPI est disponible sur :
 
 ```text
-http://localhost:3001/api
+http://localhost:3001/docs
 ```
 
 Swagger expose également le schéma **Bearer Authentication**, ce qui permet de tester les routes protégées avec un access token Supabase.
