@@ -1,10 +1,11 @@
-import { Body, Controller, Delete, Get, NotFoundException, Param, Post, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
+import { Body, Controller, Delete, Get, NotFoundException, Param, Patch, Post, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@/auth/current-user.decorator';
 import { SupabaseAuthGuard } from '@/auth/supabase-auth.guard';
 import { SupabaseUser } from '@/auth/supabase-auth.service';
 import { MonitorsService } from './monitors.service';
 import { CreateMonitorDto } from './dto/create-monitor.dto';
+import { UpdateMonitorDto } from './dto/update-monitor.dto';
 
 @ApiTags('monitors')
 @ApiBearerAuth()
@@ -43,6 +44,13 @@ export class MonitorsController {
       interval: body.interval,
     });
     if (!monitor) throw new NotFoundException('Service not found');
+    return monitor;
+  }
+
+  @Patch(':id')
+  async update(@Param('id') id: string, @Body() body: UpdateMonitorDto, @CurrentUser() user: SupabaseUser) {
+    const monitor = await this.monitorsService.update(id, user, body.interval);
+    if (!monitor) throw new NotFoundException('Monitor not found');
     return monitor;
   }
 
