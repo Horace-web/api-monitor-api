@@ -20,15 +20,21 @@ enum HttpMethod {
   @@map("http_method")
 }
 
-// Profile applicatif lié à l'utilisateur Supabase Auth.
-// L'identifiant correspond directement à auth.users.id.
-model User {
-  id        String    @id @db.Uuid
-  email     String    @unique
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+enum IncidentStatus {
+  OPEN
+  RESOLVED
 
-  services Service[]
+  @@map("incident_status")
+}
+
+model User {
+  id         String     @id @db.Uuid
+  email      String     @unique
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+
+  services   Service[]
+  incidents  Incident[]
 
   @@map("users")
 }
@@ -53,7 +59,7 @@ model Monitor {
   name           String
   url            String
   method         HttpMethod    @default(GET)
-  interval       Int           @default(60)
+  interval       Int           @default(300)
   timeout        Int           @default(10000)
   expectedStatus Int           @default(200) @map("expected_status")
   isActive       Boolean       @default(true) @map("is_active")
@@ -63,6 +69,7 @@ model Monitor {
 
   service      Service       @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   checkResults CheckResult[]
+  incidents    Incident[]
 
   @@index([serviceId])
   @@index([isActive])
@@ -82,4 +89,21 @@ model CheckResult {
 
   @@index([monitorId, checkedAt])
   @@map("check_results")
+}
+
+model Incident {
+  id         String         @id @default(uuid()) @db.Uuid
+  monitorId  String         @db.Uuid @map("monitor_id")
+  userId     String         @db.Uuid @map("user_id")
+  status     IncidentStatus @default(OPEN)
+  startedAt  DateTime       @default(now()) @map("started_at")
+  resolvedAt DateTime?      @map("resolved_at")
+  lastError  String?        @map("last_error")
+
+  monitor Monitor @relation(fields: [monitorId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([monitorId, status])
+  @@index([userId, status])
+  @@map("incidents")
 }
