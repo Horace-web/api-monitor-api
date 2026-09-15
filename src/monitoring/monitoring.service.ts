@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '@/prisma/prisma.service';
 import { TargetUrlService } from '@/common/target-url.service';
+import { IncidentsService } from '@/incidents/incidents.service';
 
 @Injectable()
 export class MonitoringService {
@@ -11,11 +12,10 @@ export class MonitoringService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly targetUrlService: TargetUrlService,
+    private readonly incidents: IncidentsService,
   ) {}
 
-  @Cron(CronExpression.EVERY_MINUTE, {
-    name: 'monitor-active-apis',
-  })
+  @Cron(CronExpression.EVERY_MINUTE, { name: 'monitor-active-apis' })
   async runScheduledChecks(): Promise<void> {
     if (this.isCheckCycleRunning) {
       this.logger.warn('Previous monitoring cycle is still running; skipping this cycle.');
@@ -28,10 +28,8 @@ export class MonitoringService {
       const monitors = await this.prisma.monitor.findMany({
         where: { isActive: true },
         include: {
-          checkResults: {
-            orderBy: { checkedAt: 'desc' },
-            take: 1,
-          },
+          checkResults: { orderBy: { checkedAt: 'desc' }, take: 1 },
+          service: { select: { userId: true, user: { select: { email: true } } } },
         },
       });
 
@@ -42,7 +40,6 @@ export class MonitoringService {
       });
 
       if (dueMonitors.length === 0) return;
-
       await Promise.all(dueMonitors.map((monitor) => this.checkMonitor(monitor)));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -54,15 +51,16 @@ export class MonitoringService {
 
   private async checkMonitor(monitor: {
     id: string;
+    name: string;
     url: string;
     timeout: number;
     expectedStatus: number;
+    service: { userId: string; user: { email: string } };
   }): Promise<void> {
     const startedAt = Date.now();
 
     try {
       const url = await this.targetUrlService.validate(monitor.url);
-
       const response = await fetch(url, {
         method: 'GET',
         redirect: 'manual',
@@ -72,9 +70,7 @@ export class MonitoringService {
       const responseTime = Date.now() - startedAt;
       const status = response.status === monitor.expectedStatus ? 'UP' : 'DOWN';
       const redirectLocation = response.headers.get('location');
-      const error = redirectLocation
-        ? `HTTP redirect received (${response.status})`
-        : undefined;
+      const error = redirectLocation ? `HTTP redirect received (${response.status})` : undefined;
 
       await this.prisma.checkResult.create({
         data: {
@@ -85,6 +81,26 @@ export class MonitoringService {
           error: status === 'DOWN' ? error : undefined,
         },
       });
+
+      if (status === 'DOWN') {
+        await this.incidents.handleDown({
+          monitorId: monitor.id,
+          userId: monitor.service.userId,
+          email: monitor.service.user.email,
+          monitorName: monitor.name,
+          url: monitor.url,
+          error,
+          statusCode: response.status,
+        });
+      } else {
+        await this.incidents.handleUp({
+          monitorId: monitor.id,
+          userId: monitor.service.userId,
+          email: monitor.service.user.email,
+          monitorName: monitor.name,
+          url: monitor.url,
+        });
+      }
     } catch (error) {
       const responseTime = Date.now() - startedAt;
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -96,6 +112,15 @@ export class MonitoringService {
           responseTime,
           error: message.slice(0, 1000),
         },
+      });
+
+      await this.incidents.handleDown({
+        monitorId: monitor.id,
+        userId: monitor.service.userId,
+        email: monitor.service.user.email,
+        monitorName: monitor.name,
+        url: monitor.url,
+        error: message.slice(0, 1000),
       });
 
       this.logger.warn(`Monitor ${monitor.id} failed: ${message}`);
