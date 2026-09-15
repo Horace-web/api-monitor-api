@@ -1,14 +1,4 @@
-import {
-  Body,
-  Controller,
-  Delete,
-  Get,
-  NotFoundException,
-  Param,
-  Post,
-  Query,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Delete, Get, NotFoundException, Param, Post, Query, UseGuards, ParseIntPipe } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@/auth/current-user.decorator';
 import { SupabaseAuthGuard } from '@/auth/supabase-auth.guard';
@@ -27,8 +17,12 @@ export class MonitorsController {
   findAll(
     @CurrentUser() user: SupabaseUser,
     @Query('serviceId') serviceId?: string,
+    @Query('status') status?: 'UP' | 'DOWN' | 'PAUSED',
+    @Query('search') search?: string,
+    @Query('page', new ParseIntPipe({ optional: true })) page?: number,
+    @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
   ) {
-    return this.monitorsService.findAll(user, serviceId);
+    return this.monitorsService.findAll(user, { serviceId, status, search, page, limit });
   }
 
   @Get(':id')
@@ -39,10 +33,7 @@ export class MonitorsController {
   }
 
   @Post()
-  async create(
-    @Body() body: CreateMonitorDto,
-    @CurrentUser() user: SupabaseUser,
-  ) {
+  async create(@Body() body: CreateMonitorDto, @CurrentUser() user: SupabaseUser) {
     const monitor = await this.monitorsService.create(user, {
       serviceId: body.serviceId,
       name: body.name.trim(),
@@ -51,7 +42,6 @@ export class MonitorsController {
       expectedStatus: body.expectedStatus,
       interval: body.interval,
     });
-
     if (!monitor) throw new NotFoundException('Service not found');
     return monitor;
   }
