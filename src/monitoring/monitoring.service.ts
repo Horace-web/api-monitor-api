@@ -49,6 +49,14 @@ export class MonitoringService {
     }
   }
 
+  private async hasNewerCheck(monitorId: string, startedAt: Date): Promise<boolean> {
+    const newerCheck = await this.prisma.checkResult.findFirst({
+      where: { monitorId, checkedAt: { gte: startedAt } },
+      select: { id: true },
+    });
+    return Boolean(newerCheck);
+  }
+
   private async checkMonitor(monitor: {
     id: string;
     name: string;
@@ -57,7 +65,7 @@ export class MonitoringService {
     expectedStatus: number;
     service: { userId: string; user: { email: string } };
   }): Promise<void> {
-    const startedAt = Date.now();
+    const startedAt = new Date();
 
     try {
       const url = await this.targetUrlService.validate(monitor.url);
@@ -67,10 +75,15 @@ export class MonitoringService {
         signal: AbortSignal.timeout(monitor.timeout),
       });
 
-      const responseTime = Date.now() - startedAt;
+      const responseTime = Date.now() - startedAt.getTime();
       const status = response.status === monitor.expectedStatus ? 'UP' : 'DOWN';
       const redirectLocation = response.headers.get('location');
       const error = redirectLocation ? `HTTP redirect received (${response.status})` : undefined;
+
+      if (await this.hasNewerCheck(monitor.id, startedAt)) {
+        this.logger.warn(`Skipping duplicate check result for monitor ${monitor.id}.`);
+        return;
+      }
 
       await this.prisma.checkResult.create({
         data: {
@@ -102,8 +115,13 @@ export class MonitoringService {
         });
       }
     } catch (error) {
-      const responseTime = Date.now() - startedAt;
+      const responseTime = Date.now() - startedAt.getTime();
       const message = error instanceof Error ? error.message : 'Unknown error';
+
+      if (await this.hasNewerCheck(monitor.id, startedAt)) {
+        this.logger.warn(`Skipping duplicate failed check for monitor ${monitor.id}.`);
+        return;
+      }
 
       await this.prisma.checkResult.create({
         data: {
