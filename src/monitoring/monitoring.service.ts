@@ -49,12 +49,37 @@ export class MonitoringService {
     }
   }
 
-  private async hasNewerCheck(monitorId: string, startedAt: Date): Promise<boolean> {
-    const newerCheck = await this.prisma.checkResult.findFirst({
-      where: { monitorId, checkedAt: { gte: startedAt } },
-      select: { id: true },
+  private async saveCheckResult(
+    monitorId: string,
+    startedAt: Date,
+    data: { status: 'UP' | 'DOWN'; statusCode?: number; responseTime?: number; error?: string },
+  ): Promise<boolean> {
+    return this.prisma.$transaction(async (tx) => {
+      const [{ locked }] = await tx.$queryRaw<Array<{ locked: boolean }>>`
+        SELECT pg_try_advisory_xact_lock(hashtext(${monitorId})) AS locked
+      `;
+
+      if (!locked) return false;
+
+      const newerCheck = await tx.checkResult.findFirst({
+        where: { monitorId, checkedAt: { gte: startedAt } },
+        select: { id: true },
+      });
+
+      if (newerCheck) return false;
+
+      await tx.checkResult.create({
+        data: {
+          monitorId,
+          status: data.status,
+          statusCode: data.statusCode,
+          responseTime: data.responseTime,
+          error: data.error,
+        },
+      });
+
+      return true;
     });
-    return Boolean(newerCheck);
   }
 
   private async checkMonitor(monitor: {
@@ -79,21 +104,17 @@ export class MonitoringService {
       const status = response.status === monitor.expectedStatus ? 'UP' : 'DOWN';
       const redirectLocation = response.headers.get('location');
       const error = redirectLocation ? `HTTP redirect received (${response.status})` : undefined;
+      const saved = await this.saveCheckResult(monitor.id, startedAt, {
+        status,
+        statusCode: response.status,
+        responseTime,
+        error: status === 'DOWN' ? error : undefined,
+      });
 
-      if (await this.hasNewerCheck(monitor.id, startedAt)) {
+      if (!saved) {
         this.logger.warn(`Skipping duplicate check result for monitor ${monitor.id}.`);
         return;
       }
-
-      await this.prisma.checkResult.create({
-        data: {
-          monitorId: monitor.id,
-          status,
-          statusCode: response.status,
-          responseTime,
-          error: status === 'DOWN' ? error : undefined,
-        },
-      });
 
       if (status === 'DOWN') {
         await this.incidents.handleDown({
@@ -117,20 +138,16 @@ export class MonitoringService {
     } catch (error) {
       const responseTime = Date.now() - startedAt.getTime();
       const message = error instanceof Error ? error.message : 'Unknown error';
+      const saved = await this.saveCheckResult(monitor.id, startedAt, {
+        status: 'DOWN',
+        responseTime,
+        error: message.slice(0, 1000),
+      });
 
-      if (await this.hasNewerCheck(monitor.id, startedAt)) {
+      if (!saved) {
         this.logger.warn(`Skipping duplicate failed check for monitor ${monitor.id}.`);
         return;
       }
-
-      await this.prisma.checkResult.create({
-        data: {
-          monitorId: monitor.id,
-          status: 'DOWN',
-          responseTime,
-          error: message.slice(0, 1000),
-        },
-      });
 
       await this.incidents.handleDown({
         monitorId: monitor.id,
