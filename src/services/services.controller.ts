@@ -5,8 +5,10 @@ import {
   Param,
   Post,
   Body,
+  Query,
   UseGuards,
   NotFoundException,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@/auth/current-user.decorator';
@@ -23,26 +25,25 @@ export class ServicesController {
   constructor(private readonly servicesService: ServicesService) {}
 
   @Get()
-  findAll(@CurrentUser() user: SupabaseUser) {
-    return this.servicesService.findAll(user);
+  findAll(
+    @CurrentUser() user: SupabaseUser,
+    @Query('page', new ParseIntPipe({ optional: true })) page?: number,
+    @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
+    @Query('search') search?: string,
+  ) {
+    return this.servicesService.findAll(user, { page, limit, search });
   }
 
   @Get(':id')
   async findOne(@Param('id') id: string, @CurrentUser() user: SupabaseUser) {
     const service = await this.servicesService.findOne(id, user);
 
-    if (!service) {
-      throw new NotFoundException('Service not found');
-    }
-
+    if (!service) throw new NotFoundException('Service not found');
     return service;
   }
 
   @Post()
-  create(
-    @Body() body: CreateServiceDto,
-    @CurrentUser() user: SupabaseUser,
-  ) {
+  create(@Body() body: CreateServiceDto, @CurrentUser() user: SupabaseUser) {
     return this.servicesService.create(user, {
       name: body.name.trim(),
       description: body.description?.trim(),
@@ -52,11 +53,7 @@ export class ServicesController {
   @Delete(':id')
   async remove(@Param('id') id: string, @CurrentUser() user: SupabaseUser) {
     const service = await this.servicesService.remove(id, user);
-
-    if (!service) {
-      throw new NotFoundException('Service not found');
-    }
-
+    if (!service) throw new NotFoundException('Service not found');
     return { message: 'Service deleted successfully' };
   }
 }
