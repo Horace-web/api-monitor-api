@@ -26,6 +26,11 @@ export class MonitorsService {
     const service = await this.prisma.service.findFirst({ where: { id: data.serviceId, userId: user.id } }); if (!service) return null;
     return this.prisma.monitor.create({ data: { name: data.name, url: data.url, serviceId: data.serviceId, timeout: data.timeout ?? 10000, expectedStatus: data.expectedStatus ?? 200, interval: data.interval ?? 300 } });
   }
+  async update(id: string, user: SupabaseUser, interval: number) {
+    const monitor = await this.findOne(id, user);
+    if (!monitor) return null;
+    return this.prisma.monitor.update({ where: { id }, data: { interval } });
+  }
   async updateStatus(id: string, user: SupabaseUser, isActive: boolean) { const monitor = await this.findOne(id, user); if (!monitor) return null; return this.prisma.monitor.update({ where: { id }, data: { isActive } }); }
   async remove(id: string, user: SupabaseUser) { const monitor = await this.findOne(id, user); if (!monitor) return null; return this.prisma.monitor.delete({ where: { id } }); }
 }
