@@ -25,17 +25,28 @@ async function bootstrap() {
   const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('docs', app, swaggerDocument);
 
-  const allowedOrigins = [
+  const configuredOrigins = process.env.FRONTEND_URL
+    ? process.env.FRONTEND_URL.split(',').map((origin) => origin.trim()).filter(Boolean)
+    : [];
+
+  const allowedOrigins = new Set([
     'http://localhost:3000',
     'http://127.0.0.1:3000',
-    ...(process.env.FRONTEND_URL
-      ? process.env.FRONTEND_URL.split(',').map((origin) => origin.trim())
-      : []),
-  ].filter(Boolean);
+    'https://api-monitor-web.vercel.app',
+    ...configuredOrigins,
+  ]);
 
   app.enableCors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.has(origin)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error(`CORS origin not allowed: ${origin}`), false);
+    },
     credentials: true,
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
   const port = process.env.PORT || 3001;
