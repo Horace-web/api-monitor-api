@@ -16,6 +16,10 @@ export class NotificationService {
     const apiKey = process.env.BREVO_API_KEY;
     const from = process.env.ALERT_FROM_EMAIL;
 
+    this.logger.log(
+      `Incident email requested: monitor=${input.monitorName}, statusCode=${input.statusCode ?? 'none'}, recipientConfigured=${Boolean(input.to)}, apiKeyConfigured=${Boolean(apiKey)}, senderConfigured=${Boolean(from)}`,
+    );
+
     if (!apiKey || !from) {
       this.logger.warn('Incident email skipped: BREVO_API_KEY or ALERT_FROM_EMAIL is not configured.');
       return;
@@ -50,6 +54,10 @@ export class NotificationService {
     const apiKey = process.env.BREVO_API_KEY;
     const from = process.env.ALERT_FROM_EMAIL;
 
+    this.logger.log(
+      `Recovery email requested: monitor=${input.monitorName}, recipientConfigured=${Boolean(input.to)}, apiKeyConfigured=${Boolean(apiKey)}, senderConfigured=${Boolean(from)}`,
+    );
+
     if (!apiKey || !from) {
       this.logger.warn('Recovery email skipped: BREVO_API_KEY or ALERT_FROM_EMAIL is not configured.');
       return;
@@ -73,6 +81,10 @@ export class NotificationService {
     const apiKey = process.env.BREVO_API_KEY;
     const from = process.env.ALERT_FROM_EMAIL;
     const fromName = process.env.ALERT_FROM_NAME || 'API Monitor';
+
+    this.logger.log(
+      `Brevo request starting: subject="${input.subject}", senderConfigured=${Boolean(from)}, senderName="${fromName}", recipientConfigured=${Boolean(input.to)}`,
+    );
 
     if (!apiKey || !from) {
       this.logger.warn('Email notification skipped: BREVO_API_KEY or ALERT_FROM_EMAIL is not configured.');
@@ -98,8 +110,11 @@ export class NotificationService {
         }),
       });
 
+      this.logger.log(`Brevo response received: status=${response.status}, ok=${response.ok}, subject="${input.subject}".`);
+
       if (!response.ok) {
         const body = await response.text();
+        this.logger.error(`Brevo rejected notification: status=${response.status}, body=${body.slice(0, 500)}`);
         throw new Error(`Brevo returned ${response.status}: ${body.slice(0, 500)}`);
       }
 
@@ -114,11 +129,11 @@ export class NotificationService {
   }
 
   private escape(value: string): string {
-    return value.replace(/[&<>"']/g, (character) => ({
+    return value.replace(/[&<>\"']/g, (character) => ({
       '&': '&amp;',
       '<': '&lt;',
       '>': '&gt;',
-      '"': '&quot;',
+      '\"': '&quot;',
       "'": '&#039;',
     })[character] ?? character);
   }
