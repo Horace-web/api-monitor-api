@@ -33,15 +33,7 @@ export class NotificationService {
     await this.send({
       to: input.to,
       subject: `Incident détecté — ${input.monitorName}`,
-      html: `
-        <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111827">
-          <h2>Incident détecté</h2>
-          <p>Le monitor <strong>${this.escape(input.monitorName)}</strong> est actuellement DOWN.</p>
-          <p><strong>URL :</strong> ${this.escape(input.url)}</p>
-          ${details ? `<p><strong>Détail :</strong> ${this.escape(details)}</p>` : ''}
-          <p><strong>Début :</strong> ${input.startedAt.toISOString()}</p>
-        </div>
-      `,
+      html: this.buildIncidentEmail({ ...input, details }),
     });
   }
 
@@ -66,15 +58,135 @@ export class NotificationService {
     await this.send({
       to: input.to,
       subject: `Monitor rétabli — ${input.monitorName}`,
-      html: `
-        <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111827">
-          <h2>Service rétabli</h2>
-          <p>Le monitor <strong>${this.escape(input.monitorName)}</strong> est de nouveau UP.</p>
-          <p><strong>URL :</strong> ${this.escape(input.url)}</p>
-          <p><strong>Rétabli le :</strong> ${input.resolvedAt.toISOString()}</p>
-        </div>
-      `,
+      html: this.buildRecoveryEmail(input),
     });
+  }
+
+  private buildIncidentEmail(input: {
+    monitorName: string;
+    url: string;
+    error?: string | null;
+    statusCode?: number | null;
+    startedAt: Date;
+    details: string;
+  }): string {
+    const statusCode = input.statusCode ? String(input.statusCode) : '—';
+
+    return `
+      <div style="margin:0;padding:32px 16px;background-color:#030405;font-family:Arial,Helvetica,sans-serif;color:#f5f5f5;">
+        <div style="max-width:620px;margin:0 auto;">
+          <div style="padding:0 4px 18px;">
+            <div style="font-size:22px;font-weight:700;letter-spacing:-0.3px;color:#ffffff;">API <span style="color:#E8611A;">Monitor</span></div>
+            <div style="margin-top:5px;font-size:12px;color:#8b929d;letter-spacing:0.3px;">Automated service monitoring</div>
+          </div>
+
+          <div style="background-color:#0A0C0F;border:1px solid #242830;border-radius:12px;overflow:hidden;">
+            <div style="height:4px;background-color:#E8611A;"></div>
+
+            <div style="padding:28px;">
+              <div style="display:inline-block;padding:6px 10px;border:1px solid #6b351d;border-radius:999px;background-color:#21130d;color:#ff9a68;font-size:11px;font-weight:700;letter-spacing:0.7px;text-transform:uppercase;">
+                Incident détecté
+              </div>
+
+              <h1 style="margin:18px 0 8px;font-size:24px;line-height:1.25;color:#ffffff;font-weight:700;">
+                ${this.escape(input.monitorName)} est indisponible
+              </h1>
+              <p style="margin:0 0 24px;font-size:14px;line-height:1.7;color:#9da3ad;">
+                Une anomalie a été détectée par votre monitoring automatique. Le service est actuellement marqué comme <strong style="color:#ff9a68;">DOWN</strong>.
+              </p>
+
+              <div style="border:1px solid #242830;border-radius:9px;background-color:#111317;overflow:hidden;">
+                <div style="padding:14px 16px;border-bottom:1px solid #242830;font-size:12px;font-weight:700;color:#ffffff;letter-spacing:0.3px;">Détails du monitoring</div>
+                <div style="padding:4px 16px;">
+                  <div style="padding:12px 0;border-bottom:1px solid #1d2026;">
+                    <div style="font-size:11px;color:#737b87;margin-bottom:4px;">SERVICE</div>
+                    <div style="font-size:13px;color:#e7e9ec;">${this.escape(input.monitorName)}</div>
+                  </div>
+                  <div style="padding:12px 0;border-bottom:1px solid #1d2026;">
+                    <div style="font-size:11px;color:#737b87;margin-bottom:4px;">URL</div>
+                    <div style="font-size:13px;color:#e7e9ec;word-break:break-all;">${this.escape(input.url)}</div>
+                  </div>
+                  <div style="padding:12px 0;border-bottom:1px solid #1d2026;">
+                    <div style="font-size:11px;color:#737b87;margin-bottom:4px;">STATUT HTTP</div>
+                    <div style="font-size:13px;font-weight:700;color:#ff9a68;">${this.escape(statusCode)}</div>
+                  </div>
+                  <div style="padding:12px 0;">
+                    <div style="font-size:11px;color:#737b87;margin-bottom:4px;">DÉBUT DE L'INCIDENT</div>
+                    <div style="font-size:13px;color:#e7e9ec;">${this.escape(input.startedAt.toISOString())}</div>
+                  </div>
+                </div>
+              </div>
+
+              ${input.details ? `
+                <div style="margin-top:16px;padding:14px 16px;border-left:3px solid #E8611A;border-radius:6px;background-color:#111317;">
+                  <div style="font-size:11px;font-weight:700;color:#737b87;margin-bottom:5px;">DÉTAIL</div>
+                  <div style="font-size:13px;line-height:1.6;color:#d9dce1;word-break:break-word;">${this.escape(input.details)}</div>
+                </div>
+              ` : ''}
+            </div>
+          </div>
+
+          <div style="padding:18px 4px 0;text-align:center;font-size:11px;line-height:1.6;color:#626975;">
+            API Monitor · Surveillance automatisée de vos services
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  private buildRecoveryEmail(input: {
+    monitorName: string;
+    url: string;
+    resolvedAt: Date;
+  }): string {
+    return `
+      <div style="margin:0;padding:32px 16px;background-color:#030405;font-family:Arial,Helvetica,sans-serif;color:#f5f5f5;">
+        <div style="max-width:620px;margin:0 auto;">
+          <div style="padding:0 4px 18px;">
+            <div style="font-size:22px;font-weight:700;letter-spacing:-0.3px;color:#ffffff;">API <span style="color:#E8611A;">Monitor</span></div>
+            <div style="margin-top:5px;font-size:12px;color:#8b929d;letter-spacing:0.3px;">Automated service monitoring</div>
+          </div>
+
+          <div style="background-color:#0A0C0F;border:1px solid #242830;border-radius:12px;overflow:hidden;">
+            <div style="height:4px;background-color:#1D3461;"></div>
+            <div style="padding:28px;">
+              <div style="display:inline-block;padding:6px 10px;border:1px solid #29436f;border-radius:999px;background-color:#0f1929;color:#8eaddb;font-size:11px;font-weight:700;letter-spacing:0.7px;text-transform:uppercase;">
+                Service rétabli
+              </div>
+
+              <h1 style="margin:18px 0 8px;font-size:24px;line-height:1.25;color:#ffffff;font-weight:700;">
+                ${this.escape(input.monitorName)} est de nouveau disponible
+              </h1>
+              <p style="margin:0 0 24px;font-size:14px;line-height:1.7;color:#9da3ad;">
+                Le monitoring a détecté le retour à un état normal. Le service est de nouveau marqué comme <strong style="color:#8eaddb;">UP</strong>.
+              </p>
+
+              <div style="border:1px solid #242830;border-radius:9px;background-color:#111317;overflow:hidden;">
+                <div style="padding:14px 16px;border-bottom:1px solid #242830;font-size:12px;font-weight:700;color:#ffffff;letter-spacing:0.3px;">Détails du rétablissement</div>
+                <div style="padding:4px 16px;">
+                  <div style="padding:12px 0;border-bottom:1px solid #1d2026;">
+                    <div style="font-size:11px;color:#737b87;margin-bottom:4px;">SERVICE</div>
+                    <div style="font-size:13px;color:#e7e9ec;">${this.escape(input.monitorName)}</div>
+                  </div>
+                  <div style="padding:12px 0;border-bottom:1px solid #1d2026;">
+                    <div style="font-size:11px;color:#737b87;margin-bottom:4px;">URL</div>
+                    <div style="font-size:13px;color:#e7e9ec;word-break:break-all;">${this.escape(input.url)}</div>
+                  </div>
+                  <div style="padding:12px 0;">
+                    <div style="font-size:11px;color:#737b87;margin-bottom:4px;">RÉTABLI LE</div>
+                    <div style="font-size:13px;color:#e7e9ec;">${this.escape(input.resolvedAt.toISOString())}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="padding:18px 4px 0;text-align:center;font-size:11px;line-height:1.6;color:#626975;">
+            API Monitor · Surveillance automatisée de vos services
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   private async send(input: { to: string; subject: string; html: string }): Promise<void> {
