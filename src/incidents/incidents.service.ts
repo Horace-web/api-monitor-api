@@ -1,10 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
 import { SupabaseUser } from '@/auth/supabase-auth.service';
 import { NotificationService } from './notification.service';
 
 @Injectable()
 export class IncidentsService {
+  private readonly logger = new Logger(IncidentsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationService,
@@ -44,15 +46,24 @@ export class IncidentsService {
     error?: string | null;
     statusCode?: number | null;
   }): Promise<void> {
+    this.logger.log(
+      `DOWN incident processing started: monitor=${input.monitorId}, statusCode=${input.statusCode ?? 'none'}, error=${input.error ?? 'none'}`,
+    );
+
     const existing = await this.prisma.incident.findFirst({
       where: { monitorId: input.monitorId, userId: input.userId, status: 'OPEN' },
       orderBy: { startedAt: 'desc' },
     });
 
     if (existing) {
+      this.logger.warn(
+        `Existing OPEN incident found: incident=${existing.id}, monitor=${input.monitorId}, startedAt=${existing.startedAt.toISOString()}. Notification will not be sent.`,
+      );
       await this.prisma.incident.update({ where: { id: existing.id }, data: { lastError: input.error ?? null } });
       return;
     }
+
+    this.logger.log(`No OPEN incident found for monitor=${input.monitorId}. Creating a new incident.`);
 
     const incident = await this.prisma.incident.create({
       data: {
@@ -63,6 +74,10 @@ export class IncidentsService {
       },
     });
 
+    this.logger.log(
+      `Incident created: incident=${incident.id}, monitor=${input.monitorId}, startedAt=${incident.startedAt.toISOString()}. Sending incident notification.`,
+    );
+
     await this.notifications.sendIncidentEmail({
       to: input.email,
       monitorName: input.monitorName,
@@ -71,6 +86,8 @@ export class IncidentsService {
       statusCode: input.statusCode,
       startedAt: incident.startedAt,
     });
+
+    this.logger.log(`DOWN incident processing finished: incident=${incident.id}, monitor=${input.monitorId}.`);
   }
 
   async handleUp(input: {
@@ -80,12 +97,17 @@ export class IncidentsService {
     monitorName: string;
     url: string;
   }): Promise<void> {
+    this.logger.log(`UP incident recovery processing started: monitor=${input.monitorId}.`);
+
     const incident = await this.prisma.incident.findFirst({
       where: { monitorId: input.monitorId, userId: input.userId, status: 'OPEN' },
       orderBy: { startedAt: 'desc' },
     });
 
-    if (!incident) return;
+    if (!incident) {
+      this.logger.log(`No OPEN incident found during recovery: monitor=${input.monitorId}. No recovery notification needed.`);
+      return;
+    }
 
     const resolvedAt = new Date();
     await this.prisma.incident.update({
@@ -93,11 +115,17 @@ export class IncidentsService {
       data: { status: 'RESOLVED', resolvedAt },
     });
 
+    this.logger.log(
+      `Incident resolved: incident=${incident.id}, monitor=${input.monitorId}, resolvedAt=${resolvedAt.toISOString()}. Sending recovery notification.`,
+    );
+
     await this.notifications.sendRecoveryEmail({
       to: input.email,
       monitorName: input.monitorName,
       url: input.url,
       resolvedAt,
     });
+
+    this.logger.log(`UP incident recovery processing finished: incident=${incident.id}, monitor=${input.monitorId}.`);
   }
 }
