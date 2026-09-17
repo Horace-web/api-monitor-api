@@ -3,6 +3,7 @@ import { Injectable, Logger } from '@nestjs/common';
 @Injectable()
 export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
+  private readonly brevoApiUrl = 'https://api.brevo.com/v3/smtp/email';
 
   async sendIncidentEmail(input: {
     to: string;
@@ -12,11 +13,11 @@ export class NotificationService {
     statusCode?: number | null;
     startedAt: Date;
   }): Promise<void> {
-    const apiKey = process.env.RESEND_API_KEY;
+    const apiKey = process.env.BREVO_API_KEY;
     const from = process.env.ALERT_FROM_EMAIL;
 
     if (!apiKey || !from) {
-      this.logger.warn('Incident email skipped: RESEND_API_KEY or ALERT_FROM_EMAIL is not configured.');
+      this.logger.warn('Incident email skipped: BREVO_API_KEY or ALERT_FROM_EMAIL is not configured.');
       return;
     }
 
@@ -46,11 +47,11 @@ export class NotificationService {
     url: string;
     resolvedAt: Date;
   }): Promise<void> {
-    const apiKey = process.env.RESEND_API_KEY;
+    const apiKey = process.env.BREVO_API_KEY;
     const from = process.env.ALERT_FROM_EMAIL;
 
     if (!apiKey || !from) {
-      this.logger.warn('Recovery email skipped: RESEND_API_KEY or ALERT_FROM_EMAIL is not configured.');
+      this.logger.warn('Recovery email skipped: BREVO_API_KEY or ALERT_FROM_EMAIL is not configured.');
       return;
     }
 
@@ -69,25 +70,43 @@ export class NotificationService {
   }
 
   private async send(input: { to: string; subject: string; html: string }): Promise<void> {
+    const apiKey = process.env.BREVO_API_KEY;
+    const from = process.env.ALERT_FROM_EMAIL;
+    const fromName = process.env.ALERT_FROM_NAME || 'API Monitor';
+
+    if (!apiKey || !from) {
+      this.logger.warn('Email notification skipped: BREVO_API_KEY or ALERT_FROM_EMAIL is not configured.');
+      return;
+    }
+
     try {
-      const response = await fetch('https://api.resend.com/emails', {
+      const response = await fetch(this.brevoApiUrl, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-          'Content-Type': 'application/json',
+          accept: 'application/json',
+          'api-key': apiKey,
+          'content-type': 'application/json',
         },
         body: JSON.stringify({
-          from: process.env.ALERT_FROM_EMAIL,
-          to: [input.to],
+          sender: {
+            name: fromName,
+            email: from,
+          },
+          to: [{ email: input.to }],
           subject: input.subject,
-          html: input.html,
+          htmlContent: input.html,
         }),
       });
 
       if (!response.ok) {
         const body = await response.text();
-        throw new Error(`Resend returned ${response.status}: ${body.slice(0, 500)}`);
+        throw new Error(`Brevo returned ${response.status}: ${body.slice(0, 500)}`);
       }
+
+      const result = (await response.json()) as { messageId?: string };
+      this.logger.log(
+        `Email notification sent through Brevo${result.messageId ? `: ${result.messageId}` : ''}`,
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown email error';
       this.logger.error(`Incident notification failed: ${message}`);
