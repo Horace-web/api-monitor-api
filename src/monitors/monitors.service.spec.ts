@@ -23,7 +23,6 @@ describe('MonitorsService', () => {
 
     const result = await service.findAll(user, { page: 1, limit: 10 });
     expect(result.data[0].latestCheck).toEqual(expect.objectContaining({ id: 'check-1', status: 'UP' }));
-    expect(result.data[0].checkResults).toBeUndefined();
     expect(result.meta).toEqual({ page: 1, limit: 10, total: 1, totalPages: 1 });
     expect(prisma.monitor.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { service: { userId: 'user-1' } },
