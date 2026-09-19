@@ -118,9 +118,8 @@ src/
 ├── monitors/             # Configuration des monitors
 ├── monitoring/           # Scheduler et exécution des checks
 ├── check-results/        # Historique et statistiques
-├── incidents/            # Incidents et notifications
+├── incidents/            # Incidents et notifications email
 ├── dashboard/            # Statistiques du dashboard
-├── notifications/        # Service de notification email
 ├── prisma/               # Prisma Client
 ├── common/               # Utilitaires partagés et sécurité URL
 ├── app.module.ts
