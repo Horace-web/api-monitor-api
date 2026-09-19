@@ -1,8 +1,8 @@
-# API Monitor — Backend API
+# API Monitor — Backend
 
-Backend NestJS de **API Monitor**, une plateforme de surveillance d'APIs et de services HTTP.
+Backend NestJS de **API Monitor**, une plateforme full-stack de surveillance d'APIs et de services HTTP.
 
-Le MVP permet à un utilisateur authentifié de créer des services, d'y associer des monitors HTTP et de conserver l'historique des vérifications afin de suivre la disponibilité et les temps de réponse.
+Le backend fournit l'API REST, l'authentification via Supabase, la gestion des services et monitors, l'exécution planifiée des checks, l'historique des résultats, les statistiques de disponibilité, la gestion des incidents et les notifications email.
 
 ## Architecture
 
@@ -11,28 +11,86 @@ Next.js Web
     │ HTTPS + Bearer Supabase Access Token
     ▼
 NestJS API
-    ├── Supabase Auth — authentification
-    ├── Services      — regroupement des monitors
-    ├── Monitors      — configuration des checks
-    ├── Monitoring    — scheduler + requêtes HTTP
-    └── Check Results — historique + statistiques
+    ├── Supabase Auth       — authentification
+    ├── Services            — regroupement des monitors
+    ├── Monitors            — configuration des checks
+    ├── Monitoring          — scheduler + requêtes HTTP
+    ├── Check Results       — historique + statistiques
+    ├── Incidents           — détection et résolution
+    └── Notifications       — alertes et récupération par email
              │
              ▼
       PostgreSQL / Supabase
 ```
 
-### Stack
+## Stack
 
 - **NestJS 10** — API REST
 - **TypeScript** — langage
 - **Prisma 5** — ORM
 - **PostgreSQL / Supabase** — base de données
-- **Supabase Auth** — authentification des utilisateurs
+- **Supabase Auth** — authentification
 - **Swagger / OpenAPI** — documentation et test de l'API
 - **class-validator** — validation des DTO
 - **@nestjs/schedule** — exécution périodique des checks
+- **Brevo** — notifications email
+- **GitHub Actions** — CI et tests
 
-Supabase Auth fournit les access tokens utilisés par le frontend. Le backend vérifie le token auprès de Supabase avant d'autoriser l'accès aux routes protégées.
+## Fonctionnalités
+
+### Authentification et sécurité
+
+- Authentification avec les tokens Supabase
+- Protection des routes métier par Bearer token
+- Isolation des ressources par utilisateur
+- Validation stricte des DTO
+- Contrôle des URLs HTTP/HTTPS pour limiter les risques de SSRF
+
+### Services
+
+- Création, consultation et suppression de services
+- Association de monitors à un service
+- Isolation des données par utilisateur
+
+### Monitors
+
+Chaque monitor peut définir :
+
+- un nom
+- une URL HTTP/HTTPS
+- une méthode HTTP (**GET** pour le MVP actuel)
+- un intervalle de vérification
+- un timeout
+- un code HTTP attendu
+- un état actif/inactif
+
+### Monitoring automatique
+
+Le scheduler s'exécute toutes les minutes et lance uniquement les checks arrivés à échéance.
+
+Chaque vérification conserve :
+
+- statut `UP` ou `DOWN`
+- code HTTP reçu
+- temps de réponse en millisecondes
+- éventuelle erreur
+- date et heure du check
+
+Un check est considéré comme réussi lorsque le code HTTP reçu correspond au code attendu du monitor.
+
+Le backend protège également l'enregistrement des résultats afin d'éviter les doublons lorsqu'un même monitor est traité de manière concurrente.
+
+### Incidents et alertes
+
+Lorsqu'un monitor passe en `DOWN`, un incident ouvert est créé s'il n'en existe pas déjà un pour ce monitor et cet utilisateur.
+
+- Un incident reste ouvert pendant la période de panne.
+- Les échecs suivants ne créent pas de nouveaux incidents pour la même panne.
+- Lorsque le monitor redevient `UP`, l'incident ouvert est résolu.
+- Une notification email est envoyée lors de la détection de l'incident.
+- Une notification de récupération est envoyée lorsque le service revient à l'état `UP`.
+
+Les emails sont envoyés via l'API SMTP de **Brevo**.
 
 ## Structure des données
 
@@ -40,15 +98,15 @@ Supabase Auth fournit les access tokens utilisés par le frontend. Le backend v�
 User
  └── Service
       └── Monitor
-           └── CheckResult
+           ├── CheckResult
+           └── Incident
 ```
 
-- **User** : utilisateur authentifié par Supabase.
+- **User** : utilisateur authentifié.
 - **Service** : groupe logique de monitors.
 - **Monitor** : endpoint HTTP à surveiller.
 - **CheckResult** : résultat historique d'une vérification.
-
-Les incidents et notifications sont prévus pour une évolution ultérieure du projet.
+- **Incident** : période de panne détectée pour un monitor.
 
 ## Modules
 
@@ -60,58 +118,18 @@ src/
 ├── monitors/             # Configuration des monitors
 ├── monitoring/           # Scheduler et exécution des checks
 ├── check-results/        # Historique et statistiques
-├── incidents/            # Base pour les incidents futurs
+├── incidents/            # Incidents et notifications
+├── dashboard/            # Statistiques du dashboard
+├── notifications/        # Service de notification email
 ├── prisma/               # Prisma Client
 ├── common/               # Utilitaires partagés et sécurité URL
 ├── app.module.ts
 └── main.ts
 ```
 
-## Fonctionnalités MVP
-
-### Services
-
-- Lister ses services
-- Consulter un service
-- Créer un service
-- Supprimer un service
-- Isolation des données par utilisateur
-
-### Monitors
-
-- Méthode **GET** pour le MVP
-- URL HTTP/HTTPS
-- Nom du monitor
-- Intervalle configurable, minimum **60 secondes**
-- Timeout configurable
-- Code HTTP attendu configurable
-- Activation / désactivation
-- Suppression
-- Isolation par propriétaire du service
-
-### Monitoring
-
-Le scheduler s'exécute toutes les minutes. Pour chaque monitor actif, il vérifie si son intervalle est arrivé à échéance avant de lancer un nouveau check.
-
-Chaque vérification enregistre :
-
-- statut `UP` ou `DOWN`
-- code HTTP reçu
-- temps de réponse en millisecondes
-- éventuelle erreur
-- date et heure du check
-
-Un check est considéré comme réussi lorsque le code HTTP reçu correspond au code attendu du monitor.
-
-### Sécurité des URLs
-
-Les URLs fournies par les utilisateurs sont contrôlées avant leur utilisation afin de limiter les risques de SSRF. Le backend accepte uniquement HTTP/HTTPS et bloque notamment les destinations locales, loopback, privées, link-local et certaines adresses réservées.
-
-Cette protection est une défense applicative ; pour un déploiement à grande échelle, un mécanisme d'egress dédié ou de résolution réseau plus stricte pourra être ajouté.
-
 ## API
 
-Toutes les routes métier sont protégées par :
+Les routes métier utilisent :
 
 ```http
 Authorization: Bearer <SUPABASE_ACCESS_TOKEN>
@@ -123,7 +141,7 @@ Authorization: Bearer <SUPABASE_ACCESS_TOKEN>
 GET /health
 ```
 
-Route publique utilisée notamment par l'hébergement pour vérifier que l'API répond.
+Route publique utilisée pour vérifier que l'API répond.
 
 ### Services
 
@@ -153,17 +171,39 @@ GET /check-results/monitor/:monitorId
 GET /check-results/monitor/:monitorId/stats
 ```
 
-Le paramètre `limit` permet de limiter l'historique retourné. Les statistiques comprennent notamment le nombre total de checks, les checks réussis/échoués, le pourcentage d'uptime et le temps de réponse moyen.
+Les statistiques comprennent notamment le nombre de checks, les checks réussis/échoués, le pourcentage d'uptime et le temps de réponse moyen.
+
+### Dashboard
+
+```text
+GET /dashboard/stats
+```
+
+Cette route fournit les indicateurs et la tendance utilisés par le dashboard frontend.
+
+### Incidents
+
+```text
+GET /incidents
+```
+
+La route permet de consulter les alertes et incidents associés aux monitors de l'utilisateur.
 
 ## Swagger
 
-En développement, la documentation OpenAPI est disponible sur :
+La documentation OpenAPI est disponible en développement sur :
 
 ```text
 http://localhost:3001/docs
 ```
 
-Swagger expose également le schéma **Bearer Authentication**, ce qui permet de tester les routes protégées avec un access token Supabase.
+En production :
+
+```text
+https://api-monitor-api-7q9b.onrender.com/docs
+```
+
+Swagger expose le schéma **Bearer Authentication**, permettant de tester les routes protégées avec un access token Supabase.
 
 ## Installation
 
@@ -172,23 +212,17 @@ Swagger expose également le schéma **Bearer Authentication**, ce qui permet de
 - Node.js 20 recommandé
 - npm
 - Un projet PostgreSQL/Supabase
-- Un projet Supabase Auth configuré
+- Un projet Supabase Auth
+- Un compte Brevo avec un expéditeur vérifié pour les alertes email
 
-### Installation des dépendances
+### Installation
 
 ```bash
 npm install
-```
-
-### Génération de Prisma Client
-
-```bash
 npx prisma generate
 ```
 
-### Variables d'environnement
-
-Copier `.env.example` vers `.env` puis renseigner les valeurs adaptées à l'environnement.
+Copier `.env.example` vers `.env` et renseigner les valeurs adaptées à l'environnement.
 
 ```env
 NODE_ENV=development
@@ -203,57 +237,82 @@ FRONTEND_URL=http://localhost:3000
 
 MONITORING_TIMEOUT=10000
 MONITORING_RETRIES=0
+
+BREVO_API_KEY=your_brevo_api_key
+ALERT_FROM_EMAIL=verified_sender@example.com
+ALERT_FROM_NAME=API Monitor
 ```
 
-**Ne jamais commit une `DATABASE_URL` contenant un mot de passe ni une clé Supabase secrète.** La clé secrète/service role n'est pas nécessaire au fonctionnement normal de cette API et ne doit jamais être exposée au frontend.
+**Ne jamais commit une clé API, un mot de passe de base de données ou une clé Supabase secrète.**
 
-### Lancer en développement
+### Développement
 
 ```bash
 npm run start:dev
 ```
 
-### Build de production
+### Build
 
 ```bash
 npm run build
 ```
 
-### Démarrer en production
+### Production
 
 ```bash
 npm run start:prod
 ```
 
+## Tests
+
+Les services métier disposent de tests unitaires couvrant notamment :
+
+- ownership et pagination des services
+- ownership et configuration des monitors
+- création/résolution des incidents
+- notifications d'incident et de récupération
+- historique des checks et calcul des statistiques
+
+L'intégration continue est assurée par GitHub Actions.
+
+```bash
+npm test
+npm run build
+```
+
+Workflow :
+
+```text
+.github/workflows/ci.yml
+```
+
 ## Base de données
 
-Le schéma Prisma se trouve dans `prisma/schema.prisma`.
+Le schéma Prisma se trouve dans :
 
-Le script SQL de création du schéma Supabase se trouve dans :
+```text
+prisma/schema.prisma
+```
+
+Le script SQL Supabase se trouve dans :
 
 ```text
 supabase/schema.sql
 ```
 
-Les noms Prisma sont mappés vers les tables et colonnes SQL utilisées par Supabase.
-
-Le projet utilise également des politiques RLS côté Supabase pour isoler les données selon l'utilisateur authentifié.
-
-## CI
-
-GitHub Actions vérifie automatiquement le backend sur les pushes et pull requests vers `main` :
-
-1. Installation des dépendances
-2. Génération de Prisma Client
-3. Build NestJS
-
-Workflow : `.github/workflows/ci.yml`
+Le projet utilise également les politiques RLS de Supabase pour isoler les données selon l'utilisateur authentifié.
 
 ## Déploiement
 
-Le backend est prévu pour être déployé sur **Render** avec PostgreSQL fourni par **Supabase**.
+Le backend est déployé sur **Render** avec **Supabase PostgreSQL**.
 
-Configuration prévue :
+```text
+Production API : https://api-monitor-api-7q9b.onrender.com
+Swagger        : https://api-monitor-api-7q9b.onrender.com/docs
+Health check   : https://api-monitor-api-7q9b.onrender.com/health
+```
+
+Configuration Render :
 
 ```text
 Runtime       : Node
@@ -263,22 +322,17 @@ Health check  : /health
 Branch        : main
 ```
 
-Les variables d'environnement sont configurées directement sur la plateforme de déploiement et ne doivent pas être commitées dans Git.
+> **Note :** sur une offre d'hébergement gratuite pouvant mettre le service en veille, le scheduler de monitoring peut être interrompu pendant la période de veille. Pour une surveillance continue, le processus de monitoring doit rester actif ou être externalisé.
 
-> **Note monitoring :** un hébergement gratuit qui met le service en veille peut interrompre temporairement le scheduler. Pour une surveillance réellement continue, l'instance de monitoring devra rester active ou le scheduler devra être externalisé.
+## Frontend
 
-## Évolutions prévues
+Le frontend du projet se trouve dans le dépôt :
 
-Le MVP reste volontairement simple. Les évolutions possibles sont :
+https://github.com/Horace-web/api-monitor-web
 
-- gestion des incidents
-- règle de confirmation après plusieurs échecs consécutifs
-- notifications email
-- graphiques d'uptime et de temps de réponse
-- pagination et rétention des historiques
-- méthodes POST/PUT/PATCH/DELETE pour les checks avancés
-- meilleure gestion des checks à grande échelle
-- séparation éventuelle du scheduler dans un worker dédié
+Application en production :
+
+https://api-monitor-web.vercel.app
 
 ## Licence
 
@@ -288,4 +342,4 @@ MIT
 
 Horace-web
 
-**Statut :** 🚧 Backend MVP en cours de finalisation et de déploiement.
+**Statut :** ✅ Projet terminé
